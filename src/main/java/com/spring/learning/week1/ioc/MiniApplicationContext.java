@@ -1,7 +1,10 @@
 package com.spring.learning.week1.ioc;
 
+import java.io.File;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.net.URL;
+import java.lang.reflect.Field;
 
 /**
  * 考题 1: 实现一个迷你 IoC 容器
@@ -36,6 +39,45 @@ public class MiniApplicationContext {
      */
     private void scan(String basePackage) {
         // 请在此处编写代码
+        // 1. 根据包名获取类路径 URL
+        String path = basePackage.replace(".", "/");
+        URL url = this.getClass().getClassLoader().getResource(path);
+        if (url == null) {
+            System.out.println("未找到包: " + basePackage);
+            return;
+        }
+        File fileOrigin = new File(url.getFile());
+        File[] files = fileOrigin.listFiles();
+        if (files == null) {
+            return;
+        }
+        // 2. 遍历文件，找到 .class 文件
+        for (File file : files) {
+            if (file.isDirectory()) {
+                scan(basePackage + "." + file.getName());
+            } else {
+                String className = file.getName().replace(".class", "");
+                Class<?> clazz = null;
+                try {
+                    clazz = Class.forName(basePackage + "." + className);
+                } catch (ClassNotFoundException e) {
+                    throw new RuntimeException(e);
+                }
+                // 3. 加载类，判断是否有 @MyComponent 注解
+                if (clazz.isAnnotationPresent(MyComponent.class)) {
+
+                    // 4. 如果有，实例化并放入 beanMap (注意 BeanName 生成规则：类名首字母小写)
+                    // 修正 deprecated newInstance 用法
+                    try {
+                        String beanName = className.substring(0, 1).toLowerCase() + className.substring(1);
+                        beanMap.put(beanName, clazz.getDeclaredConstructor().newInstance());
+                    } catch (InstantiationException | IllegalAccessException
+                            | java.lang.reflect.InvocationTargetException | NoSuchMethodException e) {
+                        throw new RuntimeException("Failed to instantiate bean: " + className, e);
+                    }
+                }
+            }
+        }
 
     }
 
@@ -46,6 +88,25 @@ public class MiniApplicationContext {
      */
     private void injectDependencies() {
         // 请在此处编写代码
+        for (Object beanInstance : beanMap.values()) {
+            Class<?> clazz = beanInstance.getClass();
+            Field[] fields = clazz.getDeclaredFields();
+            for (Field field : fields) {
+                if (field.isAnnotationPresent(MyAutowired.class)) {
+                    String beanName = field.getName();
+                    Object dependency = beanMap.get(beanName);
+                    if (dependency == null) {
+                        throw new RuntimeException("Bean not found: " + beanName);
+                    }
+                    field.setAccessible(true);
+                    try {
+                        field.set(beanInstance, dependency);
+                    } catch (IllegalAccessException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -54,9 +115,9 @@ public class MiniApplicationContext {
     public Object getBean(String beanName) {
         return beanMap.get(beanName);
     }
-    
+
     /**
-     * 获取指定类型的 Bean
+    
      */
     public <T> T getBean(Class<T> clazz) {
         for (Object bean : beanMap.values()) {
