@@ -31,7 +31,6 @@ public class MiniApplicationContext {
     }
 
     /**
-     * TODO: 扫描包并实例化 Bean
      * 1. 根据包名获取类路径 URL
      * 2. 遍历文件，找到 .class 文件
      * 3. 加载类，判断是否有 @MyComponent 注解
